@@ -349,51 +349,31 @@ mutual_local_compute <- function(data, group, unit, base = exp(1)) {
 #' mutual_total(schools00, "school", "race", weight = "n") # M => .425
 #' @import data.table
 #' @export
-mutual_local <- function(data, group, unit, weight = NULL,
-                         se = FALSE, n_bootstrap = 100, base = exp(1),
+mutual_local_b <- function(data, group, unit, weight = NULL,
+                         se = FALSE, n_bootstrap = 10, base = exp(1),
                          wide = FALSE) {
-    d <- prepare_data(data, group, unit, weight)
-
-    if (se == FALSE) {
-        ret <- mutual_local_compute(d, group, unit, base)
-    } else {
-        vars <- attr(d, "vars")
-        n_total <- sum(d[, "freq"])
-
-        if (all.equal(n_total, round(n_total)) == TRUE) {
-            message(paste0(n_bootstrap, " bootstrap iterations on ", n_total, " observations"))
-        } else {
-            stop(paste0(
-                "bootstrap with a total sample size that is not an integer is not allowed, ",
-                "maybe scale your weights?"))
-        }
-
-        boot_ret <- lapply(1:n_bootstrap, function(i) {
-            update_log(bs_n = i, bs_max = n_bootstrap)
-            # resample and collapse by all variables, except "freq"
-            resampled <- d[
-                sample(.N, n_total, replace = TRUE, prob = freq)][,
-                list(freq = .N), by = vars]
-            mutual_local_compute(resampled, group, unit, base)
-        })
-        close_log()
-        boot_ret <- rbindlist(boot_ret)
-        # summarize bootstrapped data frames
-        ret <- boot_ret[, list(
-            est = mean(est), se = stats::sd(est)),
-            by = c(unit, "stat")]
+  d <- prepare_data(data, group, unit, weight)
+  
+  if (se == FALSE) {
+    ret <- mutual_local_compute(d, group, unit, base)
+  } else {
+    vars <- attr(d, "vars")
+    n_total <- sum(d[, "freq"])
+    
+    if (!all(d[["freq"]] == round(d[["freq"]]))) {
+      warning("bootstrap with non-integer weights")
     }
-
-    if (wide == TRUE) {
-        f <- stats::as.formula(paste(paste(unit, collapse = "+"),
-                                     "~ factor(stat, levels=c('ls', 'p'))"))
-        if (se == TRUE) {
-            ret <- dcast(ret, f, value.var = c("est", "se"))
-            names(ret) <- c(unit, "ls", "p", "ls_se", "p_se")
-            setcolorder(ret, c(unit, "ls", "ls_se", "p", "p_se"))
-        } else {
-            ret <- dcast(ret, f, value.var = c("est"))
-        }
-    }
-    ret
+    
+    boot_ret <- lapply(1:n_bootstrap, function(i) {
+      #update_log(bs_n = i, bs_max = n_bootstrap)
+      # resample and collapse by all variables, except "freq"
+      resampled <- d[
+        sample(.N, n_total, replace = TRUE, prob = freq)][,
+                                                          list(freq = .N), by = vars]
+      mutual_local_compute(resampled, group, unit, base)
+    })
+    #close_log()
+    
+  }
+  boot_ret
 }
